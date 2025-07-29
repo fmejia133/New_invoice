@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: invoice-processing
+    runtime: python
+    buildCommand: pip install --no-build-isolation --no-cache-dir -r requirements.txt
+    startCommand: streamlit run app_ui.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10
