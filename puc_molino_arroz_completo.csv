@@ -1,0 +1,24 @@
+cuenta,nombre
+110505,Caja general
+110510,Bancos
+130505,Clientes nacionales
+143505,Materias primas (arroz crudo)
+143510,"Materiales indirectos (sacos, etiquetas)"
+220505,Proveedores nacionales
+236520,Retención en la fuente - compras de bienes
+236540,Retención en la fuente - servicios
+236740,Retención de IVA
+310505,Capital suscrito y pagado
+413505,Ventas de productos terminados (arroz blanco)
+510505,Salarios
+513505,"Servicios (paletizado, transporte)"
+520505,Arrendamientos
+530505,Honorarios legales
+540505,Intereses y gastos financieros
+620505,Costo de materias primas consumidas
+621005,Mano de obra directa
+623505,Costos indirectos de fabricación
+710505,Costo de ventas
+810505,Utilidad del ejercicio
+240805,IVA descontable compras gravadas
+236830,impuesto al fomento arrocero
