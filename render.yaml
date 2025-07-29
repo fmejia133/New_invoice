@@ -2,8 +2,14 @@ services:
   - type: web
     name: invoice-processing
     runtime: python
-    buildCommand: pip install --no-build-isolation --no-cache-dir -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: streamlit run app_ui.py
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AZURE_KEY
+        sync: false
+      - key: AZURE_ENDPOINT
+        sync: false
+      - key: AZURE_MODEL_ID
+        sync: false
