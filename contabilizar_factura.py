@@ -1,23 +1,25 @@
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from openai import OpenAI
-from dotenv import load_dotenv
 import os
 import json
 import pandas as pd
 
-# CONFIGURACIÓN
-import streamlit as st
-import os
-
 # ------------------ CONFIGURACIÓN ------------------
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", st.secrets.get("OPENAI_API_KEY"))
-AZURE_KEY = os.environ.get("AZURE_KEY", st.secrets.get("AZURE_KEY"))
-AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT", st.secrets.get("AZURE_ENDPOINT"))
-AZURE_MODEL_ID = os.environ.get("AZURE_MODEL_ID", st.secrets.get("AZURE_MODEL_ID"))
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+AZURE_KEY = os.environ["AZURE_KEY"]
+AZURE_ENDPOINT = os.environ["AZURE_ENDPOINT"]
+AZURE_MODEL_ID = os.environ["AZURE_MODEL_ID"]
+
+# Debug prints to verify values
+print("OPENAI_API_KEY:", OPENAI_API_KEY)
+print("AZURE_KEY:", AZURE_KEY)
+print("AZURE_ENDPOINT:", AZURE_ENDPOINT)
+print("AZURE_MODEL_ID:", AZURE_MODEL_ID)
 
 client_openai = OpenAI(api_key=OPENAI_API_KEY)
 
+# ... (rest of the code remains the same)
 # FUNCIONES AUXILIARES
 def to_float(valor):
     try:
