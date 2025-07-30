@@ -4,7 +4,7 @@ from openai import OpenAI
 import os
 import json
 import pandas as pd
-from openai._base_client import HttpxClientWrapper  # Import the httpx wrapper
+import httpx  # Import httpx to create a custom client
 
 # ------------------ CONFIGURACIÓN ------------------
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -18,10 +18,11 @@ print("AZURE_KEY:", AZURE_KEY)
 print("AZURE_ENDPOINT:", AZURE_ENDPOINT)
 print("AZURE_MODEL_ID:", AZURE_MODEL_ID)
 
-# Initialize OpenAI client with a custom HTTP client to avoid proxies
+# Initialize OpenAI client with a custom httpx client to avoid proxies
+http_client = httpx.Client(proxies=None)  # Explicitly disable proxies
 client_openai = OpenAI(
     api_key=OPENAI_API_KEY,
-    http_client=HttpxClientWrapper()  # Explicitly create a default httpx client without proxies
+    http_client=http_client
 )
 
 # FUNCIONES AUXILIARES
