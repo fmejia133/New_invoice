@@ -12,14 +12,15 @@ AZURE_KEY = os.environ["AZURE_KEY"]
 AZURE_ENDPOINT = os.environ["AZURE_ENDPOINT"]
 AZURE_MODEL_ID = os.environ["AZURE_MODEL_ID"]
 
-# Debug prints to verify values
+# Debug prints to verify values and environment
 print("OPENAI_API_KEY:", OPENAI_API_KEY)
 print("AZURE_KEY:", AZURE_KEY)
 print("AZURE_ENDPOINT:", AZURE_ENDPOINT)
 print("AZURE_MODEL_ID:", AZURE_MODEL_ID)
+print("Environment vars related to proxies:", {k: v for k, v in os.environ.items() if 'PROXY' in k.upper()})
 
-# Initialize OpenAI client with a custom httpx client to avoid proxies
-http_client = httpx.Client(proxies=None)  # Explicitly disable proxies
+# Initialize OpenAI client with a custom httpx client (no proxies by default)
+http_client = httpx.Client()  # Default client without proxies unless env vars are set
 client_openai = OpenAI(
     api_key=OPENAI_API_KEY,
     http_client=http_client
