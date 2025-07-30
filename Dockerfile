@@ -22,4 +22,4 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Run Streamlit app
-CMD ["streamlit", "run", "app_ui.py", "--server.port=8000", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "app_ui.py", "--server.port=$PORT", "--server.address=0.0.0.0"]
