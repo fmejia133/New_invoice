@@ -8,13 +8,15 @@ import pandas as pd
 
 # CONFIGURACIÓN
 import streamlit as st
+import os
 
 # ------------------ CONFIGURACIÓN ------------------
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-AZURE_KEY = st.secrets["AZURE_KEY"]
-AZURE_ENDPOINT = st.secrets["AZURE_ENDPOINT"]
-AZURE_MODEL_ID = st.secrets["AZURE_MODEL_ID"]
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", st.secrets.get("OPENAI_API_KEY"))
+AZURE_KEY = os.environ.get("AZURE_KEY", st.secrets.get("AZURE_KEY"))
+AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT", st.secrets.get("AZURE_ENDPOINT"))
+AZURE_MODEL_ID = os.environ.get("AZURE_MODEL_ID", st.secrets.get("AZURE_MODEL_ID"))
 
+client_openai = OpenAI(api_key=OPENAI_API_KEY)
 
 # FUNCIONES AUXILIARES
 def to_float(valor):
