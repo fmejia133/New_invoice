@@ -4,6 +4,7 @@ from openai import OpenAI
 import os
 import json
 import pandas as pd
+from openai._base_client import HttpxClientWrapper  # Import the httpx wrapper
 
 # ------------------ CONFIGURACIÓN ------------------
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -17,9 +18,12 @@ print("AZURE_KEY:", AZURE_KEY)
 print("AZURE_ENDPOINT:", AZURE_ENDPOINT)
 print("AZURE_MODEL_ID:", AZURE_MODEL_ID)
 
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize OpenAI client with a custom HTTP client to avoid proxies
+client_openai = OpenAI(
+    api_key=OPENAI_API_KEY,
+    http_client=HttpxClientWrapper()  # Explicitly create a default httpx client without proxies
+)
 
-# ... (rest of the code remains the same)
 # FUNCIONES AUXILIARES
 def to_float(valor):
     try:
