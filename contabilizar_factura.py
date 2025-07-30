@@ -171,7 +171,7 @@ def construir_asiento(campos, clasificacion):
     return asiento
 
 # MAIN
-def main():
+# def main():
     archivo_pdf = "factura_page_3.pdf"
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
