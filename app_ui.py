@@ -5,7 +5,7 @@ import pandas as pd
 import json
 
 st.set_page_config(page_title="App Contable - Facturas", layout="wide")
-st.title("📄 Procesamiento Contable de Facturas - Molino de Arroz")
+st.title("📄 Procesamiento Contable de Facturas - Synergy Pack")
 
 uploaded_file = st.file_uploader("Sube una factura PDF", type=["pdf"])
 
