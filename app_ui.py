@@ -19,7 +19,7 @@ if uploaded_file:
         # Display only selected fields under a subtitle
         st.subheader("📋 Detalles de la Factura")
         st.write(f"**Proveedor:** {campos.get('Proveedor', 'No disponible')}")
-        st.write(f"**NIT:** {campos.get('NIT', 'No disponible')}")
+        st.write(f"**NIT:** {campos.get('NIT Proveedor', 'No disponible')}")
         st.write(f"**Régimen Tributario:** {campos.get('Regimen Tributario', 'No disponible')}")
 
         descripcion = campos.get("Descripcion", "")
