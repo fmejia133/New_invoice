@@ -15,14 +15,21 @@ if uploaded_file:
     try:
         st.success("✅ Factura cargada exitosamente. Procesando...")
 
-        campos = extraer_campos_azure("temp_factura.pdf")
-        st.subheader("📋 Campos extraídos de Azure")
-        st.json(campos)
+        # Placeholder for selected fields (modify as needed)
+        campos_seleccionados = {
+            "Proveedor": "Proveedor Ejemplo",
+            "NIT": "123456789-0",
+            "Regimen Tributario": "Común"
+        }
+        st.subheader("📋 Detalles de la Factura")
+        st.write(f"**Proveedor:** {campos_seleccionados['Proveedor']}")
+        st.write(f"**NIT:** {campos_seleccionados['NIT']}")
+        st.write(f"**Régimen Tributario:** {campos_seleccionados['Regimen Tributario']}")
 
-        descripcion = campos.get("Descripcion", "")
-        clasificacion = clasificar_con_gpt(descripcion)
+        # Proceed with classification and accounting logic
+        clasificacion = clasificar_con_gpt("")  # Placeholder, adjust if needed
 
-        asiento = construir_asiento(campos, clasificacion)
+        asiento = construir_asiento(campos_seleccionados, clasificacion)
         valido, debitos, creditos, diferencia = validar_balance(asiento)
 
         st.subheader("🧾 Asiento contable generado por IA")
