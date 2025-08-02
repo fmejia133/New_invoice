@@ -16,8 +16,11 @@ if uploaded_file:
         st.success("✅ Factura cargada exitosamente. Procesando...")
 
         campos = extraer_campos_azure("temp_factura.pdf")
-        st.subheader("📋 Campos extraídos de Azure")
-        st.json(campos)
+        # Display only selected fields under a subtitle
+        st.subheader("📋 Detalles de la Factura")
+        st.write(f"**Proveedor:** {campos.get('Proveedor', 'No disponible')}")
+        st.write(f"**NIT:** {campos.get('NIT', 'No disponible')}")
+        st.write(f"**Régimen Tributario:** {campos.get('Regimen Tributario', 'No disponible')}")
 
         descripcion = campos.get("Descripcion", "")
         clasificacion = clasificar_con_gpt(descripcion)
