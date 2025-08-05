@@ -162,21 +162,21 @@ def construir_asiento(campos, clasificacion):
             "credito": valor_reteiva
         })
 
-    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy
-    if ("arroz" in descripcion or "arroz paddy" in descripcion):
-        if fomento == 0:  # If not specified, apply 0.5% retention
-            fomento = round(subtotal * 0.005, 2)
-            campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
-        if fomento > 0:
-            asiento.append({
-                "cuenta": "236505",  # Retenciones por pagar
-                "nombre": "Impuesto Fomento Retention (0.5%)",
-                "debito": 0,
-                "credito": fomento
-            })
+    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy only if not specified
+    calculated_fomento = round(subtotal * 0.005, 2)
+    if ("arroz" in descripcion or "arroz paddy" in descripcion) and (fomento == 0 or abs(fomento - calculated_fomento) > 0.01):
+        # Apply retention only if not present or differs significantly from 0.5%
+        fomento = calculated_fomento
+        campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
+        asiento.append({
+            "cuenta": "236505",  # Retenciones por pagar
+            "nombre": "Impuesto Fomento Retention (0.5%)",
+            "debito": 0,
+            "credito": fomento
+        })
 
     # 5. Cuenta por pagar al proveedor (adjusted for retention if applicable)
-    payable_amount = total_factura - fomento if fomento > 0 else total_factura
+    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and fomento == calculated_fomento else total_factura
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
