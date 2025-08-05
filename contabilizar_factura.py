@@ -79,8 +79,8 @@ Devuelve **solo una palabra en minúsculas** entre: inventario, servicio, gasto 
     return response.choices[0].message.content.strip().lower()
 
 def validar_balance(asiento):
-    total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
-    total_creditos = sum(to_float(l.get("credito", 0)) for l in asiento)
+    total_debitos = sum(to_float(l.get("debito", 0) for l in asiento))
+    total_creditos = sum(to_float(l.get("credito", 0) for l in asiento))
     diferencia = round(total_debitos - total_creditos, 2)
     return diferencia == 0, total_debitos, total_creditos, diferencia
 
@@ -109,7 +109,7 @@ def construir_asiento(campos, clasificacion):
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
     proveedor = campos.get("Proveedor", "")
-    regimen = campos.get("Regimen Tributario", "")  # Fixed typo: cams -> campos
+    regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
@@ -179,8 +179,8 @@ def construir_asiento(campos, clasificacion):
         else:
             print(f"Debug - Fomento is zero or not processed: {fomento}")  # Debug for missing case
 
-    # 5. Cuenta por pagar al proveedor
-    payable_amount = total_factura  # Use total_factura as is, since fomento is already deducted
+    # 5. Cuenta por pagar al proveedor (adjusted for calculated retention)
+    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or fomento == 0) else total_factura
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
