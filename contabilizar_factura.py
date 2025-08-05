@@ -109,7 +109,7 @@ def construir_asiento(campos, clasificacion):
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
     proveedor = campos.get("Proveedor", "")
-    regimen = cams.get("Regimen Tributario", "")
+    regimen = campos.get("Regimen Tributario", "")  # Fixed typo: cams -> campos
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
