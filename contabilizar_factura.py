@@ -79,8 +79,8 @@ Devuelve **solo una palabra en minúsculas** entre: inventario, servicio, gasto 
     return response.choices[0].message.content.strip().lower()
 
 def validar_balance(asiento):
-    total_debitos = sum(to_float(l.get("debito", 0) for l in asiento))
-    total_creditos = sum(to_float(l.get("credito", 0) for l in asiento))
+    total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)  # Fixed generator syntax
+    total_creditos = sum(to_float(l.get("credito", 0)) for l in asiento)  # Fixed generator syntax
     diferencia = round(total_debitos - total_creditos, 2)
     return diferencia == 0, total_debitos, total_creditos, diferencia
 
