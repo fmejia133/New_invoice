@@ -30,7 +30,7 @@ client_openai = OpenAI(
 def to_float(valor):
     try:
         return float(str(valor).replace(",", "").strip())
-    except:
+    except (ValueError, AttributeError):
         return 0.0
 
 def es_regimen_simple(texto):
@@ -109,12 +109,14 @@ def construir_asiento(campos, clasificacion):
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
     proveedor = campos.get("Proveedor", "")
-    regimen = campos.get("Regimen Tributario", "")
+    regimen = cams.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
     descripcion = campos.get("Descripcion", "").lower()
     fomento = to_float(campos.get("Impuesto Fomento", 0))
+
+    print(f"Debug - Campos: {campos}, Fomento: {fomento}")  # Debug output
 
     if clasificacion == "inventario":
         cuenta = "143505"
@@ -162,19 +164,23 @@ def construir_asiento(campos, clasificacion):
             "credito": valor_reteiva
         })
 
-    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy only if not specified
-    if ("arroz" in descripcion or "arroz paddy" in descripcion) and "Impuesto Fomento" not in campos:
-        fomento = round(subtotal * 0.005, 2)
-        campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
-        asiento.append({
-            "cuenta": "236505",  # Retenciones por pagar
-            "nombre": "Impuesto Fomento Retention (0.5%)",
-            "debito": 0,
-            "credito": fomento
-        })
+    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy
+    if ("arroz" in descripcion or "arroz paddy" in descripcion):
+        if "Impuesto Fomento" not in campos or fomento == 0:
+            fomento = round(subtotal * 0.005, 2)
+            campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
+        if fomento > 0:
+            asiento.append({
+                "cuenta": "236505",  # Retenciones por pagar
+                "nombre": "Impuesto Fomento Retention",
+                "debito": 0,
+                "credito": fomento
+            })
+        else:
+            print(f"Debug - Fomento is zero or not processed: {fomento}")  # Debug for missing case
 
-    # 5. Cuenta por pagar al proveedor (adjusted for retention if applicable)
-    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and "Impuesto Fomento" not in campos else total_factura
+    # 5. Cuenta por pagar al proveedor
+    payable_amount = total_factura  # Use total_factura as is, since fomento is already deducted
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
