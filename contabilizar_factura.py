@@ -79,8 +79,8 @@ Devuelve **solo una palabra en minúsculas** entre: inventario, servicio, gasto 
     return response.choices[0].message.content.strip().lower()
 
 def validar_balance(asiento):
-    total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)  # Fixed generator syntax
-    total_creditos = sum(to_float(l.get("credito", 0)) for l in asiento)  # Fixed generator syntax
+    total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
+    total_creditos = sum(to_float(l.get("credito", 0)) for l in asiento)
     diferencia = round(total_debitos - total_creditos, 2)
     return diferencia == 0, total_debitos, total_creditos, diferencia
 
@@ -166,6 +166,7 @@ def construir_asiento(campos, clasificacion):
 
     # 4. Impuesto Fomento retention for Arroz/Arroz Paddy
     if ("arroz" in descripcion or "arroz paddy" in descripcion):
+        original_fomento = fomento  # Store original value
         if "Impuesto Fomento" not in campos or fomento == 0:
             fomento = round(subtotal * 0.005, 2)
             campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
@@ -180,7 +181,8 @@ def construir_asiento(campos, clasificacion):
             print(f"Debug - Fomento is zero or not processed: {fomento}")  # Debug for missing case
 
     # 5. Cuenta por pagar al proveedor (adjusted for calculated retention)
-    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or fomento == 0) else total_factura
+    payable_amount = total_factura - (fomento - original_fomento) if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or original_fomento == 0) else total_factura
+    print(f"Debug - Total Factura: {total_factura}, Fomento: {fomento}, Original Fomento: {original_fomento}, Payable Amount: {payable_amount}")  # Debug output
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
