@@ -163,10 +163,8 @@ def construir_asiento(campos, clasificacion):
         })
 
     # 4. Impuesto Fomento retention for Arroz/Arroz Paddy only if not specified
-    calculated_fomento = round(subtotal * 0.005, 2)
-    if ("arroz" in descripcion or "arroz paddy" in descripcion) and (fomento == 0 or abs(fomento - calculated_fomento) > 0.01):
-        # Apply retention only if not present or differs significantly from 0.5%
-        fomento = calculated_fomento
+    if ("arroz" in descripcion or "arroz paddy" in descripcion) and "Impuesto Fomento" not in campos:
+        fomento = round(subtotal * 0.005, 2)
         campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
         asiento.append({
             "cuenta": "236505",  # Retenciones por pagar
@@ -176,7 +174,7 @@ def construir_asiento(campos, clasificacion):
         })
 
     # 5. Cuenta por pagar al proveedor (adjusted for retention if applicable)
-    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and fomento == calculated_fomento else total_factura
+    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and "Impuesto Fomento" not in campos else total_factura
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
@@ -188,7 +186,7 @@ def construir_asiento(campos, clasificacion):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_3.pdf"
+    archivo_pdf = "factura_page_1.pdf"
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     clasificacion = clasificar_con_gpt(descripcion)
