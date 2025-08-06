@@ -77,7 +77,7 @@ Clasifica la factura en una de estas categorías: inventario, servicio, gasto, m
 {puc_df.to_string(index=False)}
 
 Reglas estrictas (aplicar en orden de prioridad):
-1. Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito igual al subtotal, independientemente de la descripción.
+1. Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal, independientemente de la descripción.
 2. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal.
 3. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
 4. Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
@@ -155,7 +155,7 @@ def construir_asiento(campos, puc_df):
     iva_valor = to_float(campos.get("IVA Valor"))
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
-    proveedor = cams.get("Proveedor", "")
+    proveedor = campos.get("Proveedor", "")  # Corrected from cams to campos
     regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
