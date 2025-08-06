@@ -48,9 +48,38 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
+def cargar_puc(ruta="puc.csv"):
+    try:
+        return pd.read_csv(ruta, dtype=str)
+    except FileNotFoundError:
+        print(f"Debug - PUC file {ruta} not found, using default list")
+        return pd.DataFrame([
+            {"CUENTA": "11-05-10", "DESCRIPCION": "CAJA GENERAL", "CLASE": "Act"},
+            {"CUENTA": "14-35-05", "DESCRIPCION": "INVENTARIO DE MATERIA PRIMA", "CLASE": "Act"},
+            {"CUENTA": "22-05-05", "DESCRIPCION": "CUENTAS POR PAGAR", "CLASE": "Pas"},
+            {"CUENTA": "23-65-20", "DESCRIPCION": "RETEFUENTE REGISTRADA", "CLASE": "Pas"},
+            {"CUENTA": "24-08-05", "DESCRIPCION": "IVA DESCONTABLE COMPRAS GRAVADAS", "CLASE": "Act"},
+            {"CUENTA": "23-67-40", "DESCRIPCION": "RETENCION DE IVA", "CLASE": "Pas"},
+            {"CUENTA": "23-65-05", "DESCRIPCION": "IMPUESTO FOMENTO RETENCION", "CLASE": "Pas"},
+            {"CUENTA": "51-35-05", "DESCRIPCION": "ASEO Y VIGILANCIA", "CLASE": "Egr"},
+            {"CUENTA": "51-35-50", "DESCRIPCION": "TRANSPORTE FLETES Y ACARREOS", "CLASE": "Egr"}
+        ])
+
 def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
     descripcion_lower = descripcion.lower()
-    print(f"Debug - Input Description: {descripcion}, Lowercase: {descripcion_lower}, Proveedor: {proveedor}")
+    proveedor_lower = proveedor.lower() if proveedor else ""
+    print(f"Debug - Input Description: {descripcion}, Lowercase: {descripcion_lower}, Proveedor: {proveedor}, Lowercase: {proveedor_lower}")
+
+    # Pre-check for transportation supplier
+    if any(keyword in proveedor_lower for keyword in ["transportes", "transportadora"]):
+        print(f"Debug - Pre-classified as servicio due to supplier: {proveedor_lower}")
+        return {
+            "categoria": "servicio",
+            "cuenta": "51-35-50",
+            "nombre": "TRANSPORTE FLETES Y ACARREOS",
+            "debito": subtotal,
+            "credito": 0
+        }
 
     # Pre-check for arroz paddy
     if any(keyword in descripcion_lower for keyword in ["arroz paddy", "materia prima", "insumo", "bulto"]) and "transporte" not in descripcion_lower:
@@ -77,11 +106,10 @@ Clasifica la factura en una de estas categorías: inventario, servicio, gasto, m
 {puc_df.to_string(index=False)}
 
 Reglas estrictas (aplicar en orden de prioridad):
-1. Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal, independientemente de la descripción.
-2. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal.
-3. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
-4. Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
-5. Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo\" y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito igual al monto correspondiente.
+1. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal.
+2. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
+3. Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
+4. Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo\" y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito igual al monto correspondiente.
 
 Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
 """
@@ -135,18 +163,8 @@ def extraer_campos_azure(ruta_pdf):
         print(f"Debug - Unexpected Error in extraer_campos_azure: {str(e)}")
         return {}
 
-# Cargar PUC (simplificado, ajusta con el archivo completo)
-puc_df = pd.DataFrame([
-    {"CUENTA": "11-05-10", "DESCRIPCION": "CAJA GENERAL", "CLASE": "Act"},
-    {"CUENTA": "14-35-05", "DESCRIPCION": "INVENTARIO DE MATERIA PRIMA", "CLASE": "Act"},
-    {"CUENTA": "22-05-05", "DESCRIPCION": "CUENTAS POR PAGAR", "CLASE": "Pas"},
-    {"CUENTA": "23-65-20", "DESCRIPCION": "RETEFUENTE REGISTRADA", "CLASE": "Pas"},
-    {"CUENTA": "24-08-05", "DESCRIPCION": "IVA DESCONTABLE COMPRAS GRAVADAS", "CLASE": "Act"},
-    {"CUENTA": "23-67-40", "DESCRIPCION": "RETENCION DE IVA", "CLASE": "Pas"},
-    {"CUENTA": "23-65-05", "DESCRIPCION": "IMPUESTO FOMENTO RETENCION", "CLASE": "Pas"},
-    {"CUENTA": "51-35-05", "DESCRIPCION": "ASEO Y VIGILANCIA", "CLASE": "Egr"},
-    {"CUENTA": "51-35-50", "DESCRIPCION": "TRANSPORTE FLETES Y ACARREOS", "CLASE": "Egr"}
-])
+# Cargar PUC dinámicamente
+puc_df = cargar_puc()
 
 # ASIENTO CONTABLE
 def construir_asiento(campos, puc_df):
@@ -155,7 +173,7 @@ def construir_asiento(campos, puc_df):
     iva_valor = to_float(campos.get("IVA Valor"))
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
-    proveedor = campos.get("Proveedor", "")  # Corrected from cams to campos
+    proveedor = campos.get("Proveedor", "")
     regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
@@ -221,7 +239,7 @@ def construir_asiento(campos, puc_df):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_1.pdf"
+    archivo_pdf = "factura_page_9.pdf"  # Test with transportation invoice
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     asiento = construir_asiento(campos, puc_df)
