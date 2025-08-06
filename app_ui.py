@@ -4,6 +4,13 @@ from contabilizar_factura import extraer_campos_azure, construir_asiento, clasif
 import pandas as pd
 import json
 
+# Helper function to convert to float
+def to_float(valor):
+    try:
+        return float(str(valor).replace(",", "").strip())
+    except (ValueError, AttributeError):
+        return 0.0
+
 st.set_page_config(page_title="App Contable - Facturas", layout="wide")
 st.title("📄 Procesamiento Contable de Facturas - Synergy Pack")
 
@@ -80,10 +87,3 @@ if uploaded_file:
         st.download_button("📥 Descargar JSON editado", json_export, file_name="asiento_editado.json")
     finally:
         os.remove("temp_factura.pdf")
-
-# Helper function to convert to float (moved here to avoid import issues)
-def to_float(valor):
-    try:
-        return float(str(valor).replace(",", "").strip())
-    except (ValueError, AttributeError):
-        return 0.0
