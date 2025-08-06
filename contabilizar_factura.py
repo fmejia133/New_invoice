@@ -115,6 +115,7 @@ def construir_asiento(campos, clasificacion):
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
     descripcion = campos.get("Descripcion", "").lower()
     fomento = to_float(campos.get("Impuesto Fomento", 0))
+    original_fomento = fomento  # Initialize outside the conditional block
 
     print(f"Debug - Campos: {campos}, Fomento: {fomento}")  # Debug output
 
@@ -164,9 +165,8 @@ def construir_asiento(campos, clasificacion):
             "credito": valor_reteiva
         })
 
-    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy
+    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy only
     if ("arroz" in descripcion or "arroz paddy" in descripcion):
-        original_fomento = fomento  # Store original value
         if "Impuesto Fomento" not in campos or fomento == 0:
             fomento = round(subtotal * 0.005, 2)
             campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
@@ -180,7 +180,7 @@ def construir_asiento(campos, clasificacion):
         else:
             print(f"Debug - Fomento is zero or not processed: {fomento}")  # Debug for missing case
 
-    # 5. Cuenta por pagar al proveedor (adjusted for calculated retention)
+    # 5. Cuenta por pagar al proveedor (adjusted for calculated retention only for Arroz)
     payable_amount = total_factura - (fomento - original_fomento) if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or original_fomento == 0) else total_factura
     print(f"Debug - Total Factura: {total_factura}, Fomento: {fomento}, Original Fomento: {original_fomento}, Payable Amount: {payable_amount}")  # Debug output
     asiento.append({
