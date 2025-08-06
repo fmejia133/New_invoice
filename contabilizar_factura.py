@@ -48,11 +48,13 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
-def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura):
+def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
+    print(f"Debug - Descripción: {descripcion}, Proveedor: {proveedor}")  # Debug supplier and description
     prompt = f"""
-Eres un contador profesional en Colombia. Basado en la siguiente descripción de factura y valores:
+Eres un contador profesional en Colombia. Basado en la siguiente descripción de factura, proveedor y valores:
 
 - Descripción: \"{descripcion}\"
+- Proveedor: \"{proveedor}\"
 - Subtotal: {subtotal}
 - IVA Valor: {iva_valor}
 - Total Factura: {total_factura}
@@ -60,14 +62,15 @@ Eres un contador profesional en Colombia. Basado en la siguiente descripción de
 Clasifica la factura en una de estas categorías: inventario, servicio, gasto, material indirecto, pasivo, y selecciona la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, determinando si el monto debe ser un débito o crédito según principios contables colombianos. A continuación, se listan las cuentas relevantes con sus clases (Act=Activo, Pas=Pasivo, Egr=Gasto):
 {puc_df.to_string(index=False)}
 
-Reglas estrictas (prioridad máxima):
-- Si incluye \"arroz paddy\", \"materia prima\", \"insumo\", \"bulto\" (sin transporte), clasifica como **inventario** y usa una cuenta Activo (e.g., \"14-35-05\") con débito.
-- Si incluye \"transporte\", \"flete\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito.
-- Si incluye \"bodegaje\", \"vigilancia\", \"mantenimiento\", clasifica como **servicio** y usa \"51-35-05\" (Egr) con débito.
-- Si es una compra general, clasifica como **gasto** y usa una cuenta Egr adecuada (e.g., \"51-35-05\") con débito.
+Reglas estrictas (aplicar en orden estricto de prioridad máxima):
+- Si la descripción contiene (ignorando mayúsculas/minúsculas) \"arroz paddy\", \"materia prima\", \"insumo\", o \"bulto\" (sin \"transporte\"), clasifica como **inventario** y usa \"14-35-05\" (Act) con débito.
+- Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito, independientemente de la descripción.
+- Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito.
+- Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio** y usa \"51-35-05\" (Egr) con débito.
+- Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto** y usa \"51-35-05\" (Egr) con débito.
 - Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo** y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito.
 
-Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
+Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"inventario\", \"cuenta\": \"14-35-05\", \"nombre\": \"INVENTARIO DE MATERIA PRIMA\", \"debito\": 1000, \"credito\": 0}} o {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
 """
     response = client_openai.chat.completions.create(
         model="gpt-4o",
@@ -85,6 +88,7 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
             "credito": to_float(result.get("credito", 0))
         }
     except json.JSONDecodeError:
+        print(f"Debug - JSON Decode Error, falling back to default. Response: {response.choices[0].message.content}")
         return {"categoria": "gasto", "cuenta": "51-35-05", "nombre": "Gasto General", "debito": subtotal, "credito": 0}
 
 def validar_balance(asiento):
@@ -107,6 +111,7 @@ def extraer_campos_azure(ruta_pdf):
     campos = {}
     for key, field in result.documents[0].fields.items():
         campos[key] = str(field.value or field.content or "")
+    print(f"Debug - Extracted fields: {campos}")  # Debug to check extracted data
     return campos
 
 # Cargar PUC (simplificado, ajusta con el archivo completo)
@@ -141,7 +146,7 @@ def construir_asiento(campos, puc_df):
     print(f"Debug - Campos: {campos}, Fomento: {fomento}")
 
     # Obtener entrada P&L o inicial
-    pl_entry = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura)
+    pl_entry = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
     if pl_entry["debito"] > 0 or pl_entry["credito"] > 0:
         asiento.append(pl_entry)
 
@@ -195,7 +200,7 @@ def construir_asiento(campos, puc_df):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_1.pdf"
+    archivo_pdf = "factura_page_9.pdf"  # Test with invoice 9
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     asiento = construir_asiento(campos, puc_df)
