@@ -33,9 +33,10 @@ if uploaded_file:
         subtotal = to_float(campos.get("Subtotal"))
         iva_valor = to_float(campos.get("IVA Valor"))
         total_factura = to_float(campos.get("Total Factura"))
+        proveedor = campos.get("Proveedor", "")  # Add proveedor from campos
 
         # Get classification and account details from the new function
-        result = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura)
+        result = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
         categoria = result["categoria"]
         initial_entry = {
             "cuenta": result["cuenta"],
