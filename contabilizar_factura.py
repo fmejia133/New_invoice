@@ -1,4 +1,4 @@
-from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.ai.formrecognizer import DocumentAnalysisClient, DocumentAnalysisError
 from azure.core.credentials import AzureKeyCredential
 from openai import OpenAI
 import os
@@ -49,9 +49,23 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
     return 0.0
 
 def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
-    print(f"Debug - Descripción: {descripcion}, Proveedor: {proveedor}")  # Debug supplier and description
+    descripcion_lower = descripcion.lower()
+    print(f"Debug - Input Description: {descripcion}, Lowercase: {descripcion_lower}, Proveedor: {proveedor}")
+
+    # Pre-check for arroz paddy
+    if any(keyword in descripcion_lower for keyword in ["arroz paddy", "materia prima", "insumo", "bulto"]) and "transporte" not in descripcion_lower:
+        print(f"Debug - Pre-classified as inventario due to keywords: {descripcion_lower}")
+        return {
+            "categoria": "inventario",
+            "cuenta": "14-35-05",
+            "nombre": "INVENTARIO DE MATERIA PRIMA",
+            "debito": subtotal,
+            "credito": 0
+        }
+
+    # Proceed to AI if no pre-classification
     prompt = f"""
-Eres un contador profesional en Colombia. Basado en la siguiente descripción de factura, proveedor y valores:
+Eres un contador profesional en Colombia que trabajas en una empresa que es un molino de arroz y tiene una fábrica de máquinas empaquetadoras. La principal materia prima del molino es el arroz paddy que debe ser registrado en una cuenta de inventario. Basado en la siguiente descripción de factura, proveedor y valores:
 
 - Descripción: \"{descripcion}\"
 - Proveedor: \"{proveedor}\"
@@ -62,15 +76,14 @@ Eres un contador profesional en Colombia. Basado en la siguiente descripción de
 Clasifica la factura en una de estas categorías: inventario, servicio, gasto, material indirecto, pasivo, y selecciona la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, determinando si el monto debe ser un débito o crédito según principios contables colombianos. A continuación, se listan las cuentas relevantes con sus clases (Act=Activo, Pas=Pasivo, Egr=Gasto):
 {puc_df.to_string(index=False)}
 
-Reglas estrictas (aplicar en orden estricto de prioridad máxima):
-- Si la descripción contiene (ignorando mayúsculas/minúsculas) \"arroz paddy\", \"materia prima\", \"insumo\", o \"bulto\" (sin \"transporte\"), clasifica como **inventario** y usa \"14-35-05\" (Act) con débito.
-- Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito, independientemente de la descripción.
-- Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito.
-- Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio** y usa \"51-35-05\" (Egr) con débito.
-- Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto** y usa \"51-35-05\" (Egr) con débito.
-- Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo** y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito.
+Reglas estrictas (aplicar en orden de prioridad):
+1. Si el nombre del proveedor contiene (ignorando mayúsculas/minúsculas) \"transportes\" o \"transportadora\", clasifica como **servicio** y usa \"51-35-50\" (Egr) con débito igual al subtotal, independientemente de la descripción.
+2. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal.
+3. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
+4. Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
+5. Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo\" y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito igual al monto correspondiente.
 
-Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"inventario\", \"cuenta\": \"14-35-05\", \"nombre\": \"INVENTARIO DE MATERIA PRIMA\", \"debito\": 1000, \"credito\": 0}} o {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
+Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
 """
     response = client_openai.chat.completions.create(
         model="gpt-4o",
@@ -79,6 +92,7 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
     )
     try:
         result = json.loads(response.choices[0].message.content.strip())
+        print(f"Debug - AI Response: {result}")
         cuenta = result.get("cuenta")
         return {
             "categoria": result.get("categoria", "gasto"),
@@ -105,14 +119,21 @@ def validar_cuentas_puc(asiento, puc_df):
 
 def extraer_campos_azure(ruta_pdf):
     client = DocumentAnalysisClient(endpoint=AZURE_ENDPOINT, credential=AzureKeyCredential(AZURE_KEY))
-    with open(ruta_pdf, "rb") as f:
-        poller = client.begin_analyze_document(model_id=AZURE_MODEL_ID, document=f)
-        result = poller.result()
-    campos = {}
-    for key, field in result.documents[0].fields.items():
-        campos[key] = str(field.value or field.content or "")
-    print(f"Debug - Extracted fields: {campos}")  # Debug to check extracted data
-    return campos
+    try:
+        with open(ruta_pdf, "rb") as f:
+            poller = client.begin_analyze_document(model_id=AZURE_MODEL_ID, document=f)
+            result = poller.result()
+        campos = {}
+        for key, field in result.documents[0].fields.items():
+            campos[key] = str(field.value or field.content or "")
+        print(f"Debug - Extracted fields: {campos}")
+        return campos
+    except DocumentAnalysisError as e:
+        print(f"Debug - Azure Error: {str(e)}")
+        return {}
+    except Exception as e:
+        print(f"Debug - Unexpected Error in extraer_campos_azure: {str(e)}")
+        return {}
 
 # Cargar PUC (simplificado, ajusta con el archivo completo)
 puc_df = pd.DataFrame([
@@ -134,7 +155,7 @@ def construir_asiento(campos, puc_df):
     iva_valor = to_float(campos.get("IVA Valor"))
     total_factura = to_float(campos.get("Total Factura"))
     nit = campos.get("NIT Proveedor", "")
-    proveedor = campos.get("Proveedor", "")
+    proveedor = cams.get("Proveedor", "")
     regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
     actividad = campos.get("Actividad Economica", "")
@@ -200,7 +221,7 @@ def construir_asiento(campos, puc_df):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_9.pdf"  # Test with invoice 9
+    archivo_pdf = "factura_page_1.pdf"
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     asiento = construir_asiento(campos, puc_df)
