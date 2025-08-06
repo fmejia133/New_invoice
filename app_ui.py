@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_con_gpt, validar_balance, validar_cuentas_puc
+from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_y_obtener_cuenta, validar_balance, validar_cuentas_puc, puc_df
 import pandas as pd
 import json
 
@@ -23,9 +23,26 @@ if uploaded_file:
         st.write(f"**Régimen Tributario:** {campos.get('Regimen Tributario', 'No disponible')}")
 
         descripcion = campos.get("Descripcion", "")
-        clasificacion = clasificar_con_gpt(descripcion)
+        subtotal = to_float(campos.get("Subtotal"))
+        iva_valor = to_float(campos.get("IVA Valor"))
+        total_factura = to_float(campos.get("Total Factura"))
 
-        asiento = construir_asiento(campos, clasificacion)
+        # Get classification and account details from the new function
+        result = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura)
+        categoria = result["categoria"]
+        initial_entry = {
+            "cuenta": result["cuenta"],
+            "nombre": result["nombre"],
+            "debito": result["debito"],
+            "credito": result["credito"]
+        }
+
+        # Construct the full asiento using the initial entry
+        asiento = construir_asiento(campos, puc_df)
+        # Ensure the initial entry from AI is included if not already handled by construir_asiento
+        if not any(entry["cuenta"] == initial_entry["cuenta"] for entry in asiento):
+            asiento.insert(0, initial_entry)
+
         valido, debitos, creditos, diferencia = validar_balance(asiento)
 
         st.subheader("🧾 Asiento contable generado por IA")
@@ -35,7 +52,7 @@ if uploaded_file:
         if not valido:
             st.warning(f"⚠️ Asiento original no cuadra. Débitos {debitos} vs Créditos {creditos}. Diferencia: {diferencia}")
 
-        cuentas_invalidas = validar_cuentas_puc(asiento)
+        cuentas_invalidas = validar_cuentas_puc(asiento, puc_df)
         if cuentas_invalidas:
             st.warning(f"⚠️ Cuentas no válidas en el PUC: {cuentas_invalidas}")
         else:
@@ -63,3 +80,10 @@ if uploaded_file:
         st.download_button("📥 Descargar JSON editado", json_export, file_name="asiento_editado.json")
     finally:
         os.remove("temp_factura.pdf")
+
+# Helper function to convert to float (moved here to avoid import issues)
+def to_float(valor):
+    try:
+        return float(str(valor).replace(",", "").strip())
+    except (ValueError, AttributeError):
+        return 0.0
