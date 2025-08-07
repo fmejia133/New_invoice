@@ -1,3 +1,4 @@
+# contabilizar_factura.py
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from openai import OpenAI
@@ -51,24 +52,29 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
-def clasificar_con_gpt(descripcion):
+def clasificar_con_gpt(descripcion, proveedor):
     prompt = f"""
-Eres un contador profesional en Colombia. Basado únicamente en esta descripción de factura:
+Eres un contador profesional en Colombia que trabajas en un molino de arroz que también fabrica maquinas empaquetadoras de granos. Basado únicamente en esta descripción de factura:
 
 \"{descripcion}\"
 
-Clasifícala como uno de los siguientes:
-- inventario
-- servicio
-- gasto
-- material indirecto
+y el proveedor:
+
+\"{proveedor}\"
+
+Clasifícala y selecciona la cuenta PUC apropiada para el débito principal (el subtotal de la compra).
+
+La descripción es lo más importante porque indica la naturaleza del producto o servicio.
+Usa el nombre del proveedor para refinar, por ejemplo, si el proveedor incluye "Transportadora" o "Transportes", es probable un servicio de fletes, usa una cuenta como 513550 o 613535 o 733550 para transporte, fletes y acarreos, dependiendo si es gasto admin, costo venta o producción.
 
 Reglas:
-- Si el texto contiene palabras como "remesa", "manifiesto", "tiquete", "conductor", "vehículo", "transporte", "envío", "logística", clasifica como **servicio**.
-- Si el texto contiene palabras como "arroz paddy", "materia prima", "insumo", "bulto", y NO tiene ninguna de las palabras anteriores, clasifica como **inventario**.
-- Si se trata de bodegaje, vigilancia, mantenimiento, clasifica como **servicio**.
+- Si contiene palabras como "remesa", "manifiesto", "tiquete", "conductor", "vehículo", "transporte", "envío", "logística", o proveedor con "Transportadora/Transportes", clasifica como servicio de transporte.
+- Si contiene "arroz paddy", "materia prima", "insumo", "bulto", clasifica como inventario.
+- Si es bodegaje, vigilancia, mantenimiento, clasifica como servicio.
+- Elige la cuenta PUC estándar colombiana apropiada para débito: para inventarios (14xx), gastos admin (51xx), costos de venta (61xx), costos de producción (72xx/73xx), etc.
 
-Devuelve **solo una palabra en minúsculas** entre: inventario, servicio, gasto o material indirecto.
+Devuelve **solo JSON** : {{"cuenta": "codigo_cuenta", "nombre": "nombre_cuenta"}}
+Por ejemplo: {{"cuenta": "143505", "nombre": "Inventario de materia prima"}}
 """.strip()
 
     response = client_openai.chat.completions.create(
@@ -76,7 +82,9 @@ Devuelve **solo una palabra en minúsculas** entre: inventario, servicio, gasto 
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
-    return response.choices[0].message.content.strip().lower()
+    resp = response.choices[0].message.content.strip()
+    data = json.loads(resp)
+    return data["cuenta"], data["nombre"]
 
 def validar_balance(asiento):
     total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
@@ -84,9 +92,9 @@ def validar_balance(asiento):
     diferencia = round(total_debitos - total_creditos, 2)
     return diferencia == 0, total_debitos, total_creditos, diferencia
 
-def validar_cuentas_puc(asiento, path_catalogo="puc_molino_arroz_completo.csv"):
-    df_puc = pd.read_csv(path_catalogo, dtype={"cuenta": str})
-    cuentas_validas = set(df_puc["cuenta"])
+def validar_cuentas_puc(asiento, path_catalogo="PUC-CENTRO COSTOS SYNERGY.xlsx"):
+    df_puc = pd.read_excel(path_catalogo, sheet_name="PUC", dtype={"CUENTA": str})
+    cuentas_validas = set(df_puc["CUENTA"])
     cuentas_asiento = set(str(l["cuenta"]) for l in asiento)
     cuentas_invalidas = cuentas_asiento - cuentas_validas
     return cuentas_invalidas
@@ -102,7 +110,7 @@ def extraer_campos_azure(ruta_pdf):
     return campos
 
 # ASIENTO CONTABLE
-def construir_asiento(campos, clasificacion):
+def construir_asiento(campos, cuenta, nombre):
     asiento = []
     subtotal = to_float(campos.get("Subtotal"))
     iva_valor = to_float(campos.get("IVA Valor"))
@@ -118,16 +126,6 @@ def construir_asiento(campos, clasificacion):
     original_fomento = fomento  # Initialize outside the conditional block
 
     print(f"Debug - Campos: {campos}, Fomento: {fomento}")  # Debug output
-
-    if clasificacion == "inventario":
-        cuenta = "143505"
-        nombre = "Inventario de materia prima"
-    elif clasificacion == "material indirecto":
-        cuenta = "143510"
-        nombre = "Materiales indirectos"
-    else:
-        cuenta = "513505"
-        nombre = "Servicios"
 
     # 1. Subtotal => gasto/inventario
     if subtotal > 0:
@@ -197,8 +195,9 @@ def main():
     archivo_pdf = "factura_page_1.pdf"
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
-    clasificacion = clasificar_con_gpt(descripcion)
-    asiento = construir_asiento(campos, clasificacion)
+    proveedor = campos.get("Proveedor", "")
+    cuenta, nombre = clasificar_con_gpt(descripcion, proveedor)
+    asiento = construir_asiento(campos, cuenta, nombre)
     valido, debitos, creditos, diferencia = validar_balance(asiento)
     if not valido:
         print(f"❌ Asiento no cuadra. Débitos: {debitos}, Créditos: {creditos}, Diferencia: {diferencia}")
