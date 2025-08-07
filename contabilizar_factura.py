@@ -48,16 +48,24 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
-def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY.xlsx", sheet_name="PUC"):
+def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY_clean.xlsx", sheet_name="PUC"):
     try:
-        # Load Excel file and filter for valid CLASE values
-        df = pd.read_excel(ruta, sheet_name=sheet_name, usecols=["CUENTA", "DESCRIPCION", "CLASE"])
-        df = df.dropna(subset=["CLASE"])  # Remove rows with empty CLASE
-        df = df[df["CLASE"].isin(["Act", "Pas", "Egr"])]  # Keep only relevant classes
+        import os
+        print(f"Debug - File exists: {os.path.isfile(ruta)}")
+        xls = pd.ExcelFile(ruta)
+        print(f"Debug - Available sheets: {xls.sheet_names}")
+        df_all = pd.read_excel(xls, sheet_name=sheet_name)
+        print(f"Debug - All columns in sheet '{sheet_name}': {df_all.columns.tolist()}")
+        df = pd.read_excel(ruta, sheet_name=sheet_name, usecols=["CUENTA", "DESCRIPCION", "CLASE"], header=0)
+        df = df.dropna(subset=["CLASE"])
+        df = df[df["CLASE"].isin(["Act", "Pas", "Egr"])]
         print(f"Debug - Loaded PUC with {len(df)} valid accounts")
         return df
     except FileNotFoundError:
         print(f"Debug - PUC file {ruta} not found, using empty fallback")
+        return pd.DataFrame(columns=["CUENTA", "DESCRIPCION", "CLASE"])
+    except ValueError as e:
+        print(f"Debug - ValueError in cargar_puc: {str(e)}")
         return pd.DataFrame(columns=["CUENTA", "DESCRIPCION", "CLASE"])
 
 def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
@@ -122,7 +130,13 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
         temperature=0
     )
     try:
-        result = json.loads(response.choices[0].message.content.strip())
+        response_text = response.choices[0].message.content.strip()
+        import re
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group(1))
+        else:
+            raise json.JSONDecodeError("No JSON block found", response_text, 0)
         print(f"Debug - AI Response: {result}")
         cuenta = result.get("cuenta")
         nombre = puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].iloc[0] if cuenta in puc_df["CUENTA"].values and not puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].empty else result.get("nombre", "COMPRAS")
@@ -134,7 +148,7 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
             "credito": to_float(result.get("credito", 0)),
             "comentario": result.get("comentario", "")
         }
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, AttributeError):
         print(f"Debug - JSON Decode Error, falling back to default. Response: {response.choices[0].message.content}")
         return {"categoria": "gasto", "cuenta": "51-40-10", "nombre": "COMPRAS", "debito": subtotal, "credito": 0, "comentario": f"Error en parsing, revisar manualmente. Respuesta AI: {response.choices[0].message.content}"}
 
@@ -181,7 +195,7 @@ def construir_asiento(campos, puc_df):
     proveedor = campos.get("Proveedor", "")
     regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
-    actividad = campos.get("Actividad Economica", "")  # Fixed from 'cams' to 'campos'
+    actividad = campos.get("Actividad Economica", "")
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
     descripcion = campos.get("Descripcion", "").lower()
     fomento = to_float(campos.get("Impuesto Fomento", 0))
