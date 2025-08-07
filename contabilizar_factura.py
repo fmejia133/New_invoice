@@ -1,10 +1,10 @@
-from azure.ai.formrecognizer import DocumentAnalysisClient, DocumentAnalysisError
+from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from openai import OpenAI
 import os
 import json
 import pandas as pd
-import httpx
+import httpx  # Import httpx to create a custom client
 
 # ------------------ CONFIGURACIÓN ------------------
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -12,15 +12,15 @@ AZURE_KEY = os.environ["AZURE_KEY"]
 AZURE_ENDPOINT = os.environ["AZURE_ENDPOINT"]
 AZURE_MODEL_ID = os.environ["AZURE_MODEL_ID"]
 
-# Debug prints
+# Debug prints to verify values and environment
 print("OPENAI_API_KEY:", OPENAI_API_KEY)
 print("AZURE_KEY:", AZURE_KEY)
 print("AZURE_ENDPOINT:", AZURE_ENDPOINT)
 print("AZURE_MODEL_ID:", AZURE_MODEL_ID)
 print("Environment vars related to proxies:", {k: v for k, v in os.environ.items() if 'PROXY' in k.upper()})
 
-# Initialize OpenAI client
-http_client = httpx.Client()
+# Initialize OpenAI client with a custom httpx client (no proxies by default)
+http_client = httpx.Client()  # Default client without proxies unless env vars are set
 client_openai = OpenAI(
     api_key=OPENAI_API_KEY,
     http_client=http_client
@@ -115,6 +115,9 @@ def construir_asiento(campos, clasificacion):
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
     descripcion = campos.get("Descripcion", "").lower()
     fomento = to_float(campos.get("Impuesto Fomento", 0))
+    original_fomento = fomento  # Initialize outside the conditional block
+
+    print(f"Debug - Campos: {campos}, Fomento: {fomento}")  # Debug output
 
     if clasificacion == "inventario":
         cuenta = "143505"
@@ -162,21 +165,24 @@ def construir_asiento(campos, clasificacion):
             "credito": valor_reteiva
         })
 
-    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy
+    # 4. Impuesto Fomento retention for Arroz/Arroz Paddy only
     if ("arroz" in descripcion or "arroz paddy" in descripcion):
         if "Impuesto Fomento" not in campos or fomento == 0:
             fomento = round(subtotal * 0.005, 2)
-            campos["Impuesto Fomento"] = str(fomento)
+            campos["Impuesto Fomento"] = str(fomento)  # Update campos for tracking
         if fomento > 0:
             asiento.append({
                 "cuenta": "236505",  # Retenciones por pagar
-                "nombre": "Impuesto Fomento Retention (0.5%)",
+                "nombre": "Impuesto Fomento Retention",
                 "debito": 0,
                 "credito": fomento
             })
+        else:
+            print(f"Debug - Fomento is zero or not processed: {fomento}")  # Debug for missing case
 
-    # 5. Cuenta por pagar al proveedor (adjusted for retention if applicable)
-    payable_amount = total_factura - fomento if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or fomento == 0) else total_factura
+    # 5. Cuenta por pagar al proveedor (adjusted for calculated retention only for Arroz)
+    payable_amount = total_factura - (fomento - original_fomento) if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or original_fomento == 0) else total_factura
+    print(f"Debug - Total Factura: {total_factura}, Fomento: {fomento}, Original Fomento: {original_fomento}, Payable Amount: {payable_amount}")  # Debug output
     asiento.append({
         "cuenta": "220505",
         "nombre": f"Cuentas por pagar - {proveedor} - NIT {nit}",
@@ -188,7 +194,7 @@ def construir_asiento(campos, clasificacion):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_2.pdf"
+    archivo_pdf = "factura_page_1.pdf"
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     clasificacion = clasificar_con_gpt(descripcion)

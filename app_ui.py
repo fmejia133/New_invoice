@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_y_obtener_cuenta, validar_balance, validar_cuentas_puc, puc_df
+from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_con_gpt, validar_balance, validar_cuentas_puc
 import pandas as pd
 import json
 
@@ -16,34 +16,13 @@ if uploaded_file:
         st.success("✅ Factura cargada exitosamente. Procesando...")
 
         campos = extraer_campos_azure("temp_factura.pdf")
-        # Display only selected fields under a subtitle
-        st.subheader("📋 Detalles de la Factura")
-        st.write(f"**Proveedor:** {campos.get('Proveedor', 'No disponible')}")
-        st.write(f"**NIT:** {campos.get('NIT Proveedor', 'No disponible')}")
-        st.write(f"**Régimen Tributario:** {campos.get('Regimen Tributario', 'No disponible')}")
+        st.subheader("📋 Campos extraídos de Azure")
+        st.json(campos)
 
         descripcion = campos.get("Descripcion", "")
-        subtotal = to_float(campos.get("Subtotal"))
-        iva_valor = to_float(campos.get("IVA Valor"))
-        total_factura = campos.get("Total Factura", "")
-        proveedor = campos.get("Proveedor", "")
+        clasificacion = clasificar_con_gpt(descripcion)
 
-        # Get classification and account details from the new function
-        result = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
-        categoria = result["categoria"]
-        initial_entry = {
-            "cuenta": result["cuenta"],
-            "nombre": result["nombre"],
-            "debito": result["debito"],
-            "credito": result["credito"]
-        }
-
-        # Construct the full asiento using the initial entry
-        asiento = construir_asiento(campos, puc_df)
-        # Ensure the initial entry from AI is included if not already handled by construir_asiento
-        if not any(entry["cuenta"] == initial_entry["cuenta"] for entry in asiento):
-            asiento.insert(0, initial_entry)
-
+        asiento = construir_asiento(campos, clasificacion)
         valido, debitos, creditos, diferencia = validar_balance(asiento)
 
         st.subheader("🧾 Asiento contable generado por IA")
@@ -53,7 +32,7 @@ if uploaded_file:
         if not valido:
             st.warning(f"⚠️ Asiento original no cuadra. Débitos {debitos} vs Créditos {creditos}. Diferencia: {diferencia}")
 
-        cuentas_invalidas = validar_cuentas_puc(asiento, puc_df)
+        cuentas_invalidas = validar_cuentas_puc(asiento)
         if cuentas_invalidas:
             st.warning(f"⚠️ Cuentas no válidas en el PUC: {cuentas_invalidas}")
         else:
