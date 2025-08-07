@@ -48,25 +48,20 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
-def cargar_puc(ruta="puc.csv"):
+def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY.xlsx", sheet_name="PUC"):
     try:
-        return pd.read_csv(ruta, dtype=str)
+        # Load Excel file and filter for valid CLASE values
+        df = pd.read_excel(ruta, sheet_name=sheet_name, usecols=["CUENTA", "DESCRIPCION", "CLASE"])
+        df = df.dropna(subset=["CLASE"])  # Remove rows with empty CLASE
+        df = df[df["CLASE"].isin(["Act", "Pas", "Egr"])]  # Keep only relevant classes
+        print(f"Debug - Loaded PUC with {len(df)} valid accounts")
+        return df
     except FileNotFoundError:
-        print(f"Debug - PUC file {ruta} not found, using default list")
-        return pd.DataFrame([
-            {"CUENTA": "11-05-10", "DESCRIPCION": "CAJA GENERAL", "CLASE": "Act"},
-            {"CUENTA": "14-35-05", "DESCRIPCION": "INVENTARIO DE MATERIA PRIMA", "CLASE": "Act"},
-            {"CUENTA": "22-05-05", "DESCRIPCION": "CUENTAS POR PAGAR", "CLASE": "Pas"},
-            {"CUENTA": "23-65-20", "DESCRIPCION": "RETEFUENTE REGISTRADA", "CLASE": "Pas"},
-            {"CUENTA": "24-08-05", "DESCRIPCION": "IVA DESCONTABLE COMPRAS GRAVADAS", "CLASE": "Act"},
-            {"CUENTA": "23-67-40", "DESCRIPCION": "RETENCION DE IVA", "CLASE": "Pas"},
-            {"CUENTA": "23-65-05", "DESCRIPCION": "IMPUESTO FOMENTO RETENCION", "CLASE": "Pas"},
-            {"CUENTA": "51-35-05", "DESCRIPCION": "ASEO Y VIGILANCIA", "CLASE": "Egr"},
-            {"CUENTA": "51-35-50", "DESCRIPCION": "TRANSPORTE FLETES Y ACARREOS", "CLASE": "Egr"}
-        ])
+        print(f"Debug - PUC file {ruta} not found, using empty fallback")
+        return pd.DataFrame(columns=["CUENTA", "DESCRIPCION", "CLASE"])
 
 def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
-    descripcion_lower = descripcion.lower()
+    descripcion_lower = descripcion.lower() if descripcion else ""
     proveedor_lower = proveedor.lower() if proveedor else ""
     print(f"Debug - Input Description: {descripcion}, Lowercase: {descripcion_lower}, Proveedor: {proveedor}, Lowercase: {proveedor_lower}")
 
@@ -92,9 +87,9 @@ def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_
             "credito": 0
         }
 
-    # Proceed to AI if no pre-classification
+    # Proceed to AI for general classification
     prompt = f"""
-Eres un contador profesional en Colombia que trabajas en una empresa que es un molino de arroz y tiene una fábrica de máquinas empaquetadoras. La principal materia prima del molino es el arroz paddy que debe ser registrado en una cuenta de inventario. Basado en la siguiente descripción de factura, proveedor y valores:
+Eres un contador profesional en Colombia que trabajas en una empresa que es un molino de arroz y tiene una fábrica de máquinas empaquetadoras. La principal materia prima del molino es el arroz paddy, que debe ser registrada en una cuenta de inventario. Esta aplicación se enfoca en la función de cuentas por pagar (AP), clasificando facturas en categorías como inventario, servicios, gastos, materiales indirectos o pasivos, y seleccionando la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, según principios contables colombianos. Clasifica cada campo como 'Egr' (P&L), 'Act' (activo) o 'Pas' (pasivo) basándote **exclusivamente** en la descripción y el nombre del proveedor, ya que estos indican la naturaleza del bien o servicio. Los campos subtotal, IVA valor y total factura se proporcionan solo para determinar los montos de débito o crédito, no para la clasificación. Basado en la siguiente información:
 
 - Descripción: \"{descripcion}\"
 - Proveedor: \"{proveedor}\"
@@ -102,16 +97,12 @@ Eres un contador profesional en Colombia que trabajas en una empresa que es un m
 - IVA Valor: {iva_valor}
 - Total Factura: {total_factura}
 
-Clasifica la factura en una de estas categorías: inventario, servicio, gasto, material indirecto, pasivo, y selecciona la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, determinando si el monto debe ser un débito o crédito según principios contables colombianos. A continuación, se listan las cuentas relevantes con sus clases (Act=Activo, Pas=Pasivo, Egr=Gasto):
+Analiza el contexto de la descripción y el proveedor para determinar la categoría y cuenta más apropiada de la lista de cuentas AP proporcionada a continuación, con sus clases (Act=Activo, Pas=Pasivo, Egr=Gasto):
 {puc_df.to_string(index=False)}
 
-Reglas estrictas (aplicar en orden de prioridad):
-1. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"transporte\" o \"flete\", clasifica como **servicio\" y usa \"51-35-50\" (Egr) con débito igual al subtotal.
-2. Si la descripción incluye (ignorando mayúsculas/minúsculas) \"bodegaje\", \"vigilancia\", o \"mantenimiento\", clasifica como **servicio\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
-3. Si es una compra general (sin clasificar en las reglas anteriores), clasifica como **gasto\" y usa \"51-35-05\" (Egr) con débito igual al subtotal.
-4. Si incluye retenciones, retefuente, o es el total a pagar al proveedor, clasifica como **pasivo\" y usa cuentas Pasivo (e.g., \"22-05-05\" para AP, \"23-65-20\" para Retefuente) con crédito igual al monto correspondiente.
+Si incluye retenciones (e.g., retefuente, IVA retenido) o es el total a pagar al proveedor, prioriza cuentas de pasivo (Pas). Si es un servicio o gasto, usa cuentas de gasto (Egr). Si es una compra de bienes (e.g., materia prima), usa cuentas de activo (Act) cuando corresponda. Si hay incertidumbre, selecciona la cuenta más lógica basada en la descripción y proveedor, y agrega un comentario en el JSON para revisión.
 
-Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}}.
+Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), y opcionalmente \"comentario\" para dudas, por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}} o {{\"categoria\": \"pasivo\", \"cuenta\": \"23-65-20\", \"nombre\": \"RETEFUENTE REGISTRADA\", \"debito\": 0, \"credito\": 150, \"comentario\": \"Revisar retefuente aplicada\"}}.
 """
     response = client_openai.chat.completions.create(
         model="gpt-4o",
@@ -122,16 +113,19 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
         result = json.loads(response.choices[0].message.content.strip())
         print(f"Debug - AI Response: {result}")
         cuenta = result.get("cuenta")
+        # Find the matching account name from puc_df if cuenta exists
+        nombre = puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].iloc[0] if cuenta in puc_df["CUENTA"].values and not puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].empty else result.get("nombre", "COMPRAS")
         return {
             "categoria": result.get("categoria", "gasto"),
-            "cuenta": cuenta if cuenta in puc_df['CUENTA'].values else "51-35-05",
-            "nombre": result.get("nombre", "Gasto General"),
+            "cuenta": cuenta if cuenta in puc_df["CUENTA"].values else "51-40-10",  # Default to COMPRAS
+            "nombre": nombre,
             "debito": to_float(result.get("debito", 0)),
-            "credito": to_float(result.get("credito", 0))
+            "credito": to_float(result.get("credito", 0)),
+            "comentario": result.get("comentario", "")
         }
     except json.JSONDecodeError:
         print(f"Debug - JSON Decode Error, falling back to default. Response: {response.choices[0].message.content}")
-        return {"categoria": "gasto", "cuenta": "51-35-05", "nombre": "Gasto General", "debito": subtotal, "credito": 0}
+        return {"categoria": "gasto", "cuenta": "51-40-10", "nombre": "COMPRAS", "debito": subtotal, "credito": 0, "comentario": "Error en parsing, revisar manualmente"}
 
 def validar_balance(asiento):
     total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
@@ -239,7 +233,7 @@ def construir_asiento(campos, puc_df):
 
 # MAIN
 def main():
-    archivo_pdf = "factura_page_9.pdf"  # Test with transportation invoice
+    archivo_pdf = "factura_page_1.pdf"  # Test with a general invoice
     campos = extraer_campos_azure(archivo_pdf)
     descripcion = campos.get("Descripcion", "")
     asiento = construir_asiento(campos, puc_df)
