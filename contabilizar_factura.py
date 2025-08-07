@@ -56,7 +56,6 @@ def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY_fixed.xlsx", sheet_name="PUC"):
         print(f"Debug - Available sheets: {xls.sheet_names}")
         df_all = pd.read_excel(xls, sheet_name=sheet_name, header=0)
         print(f"Debug - All columns in sheet '{sheet_name}': {df_all.columns.tolist()}")
-        # Select only the required columns, ignoring extras
         required_cols = ["CUENTA", "DESCRIPCION", "CLASE"]
         df = df_all[required_cols].copy()
         df = df.dropna(subset=["CLASE"])
@@ -180,6 +179,7 @@ def extraer_campos_azure(ruta_pdf):
     client = DocumentAnalysisClient(endpoint=AZURE_ENDPOINT, credential=AzureKeyCredential(AZURE_KEY))
     try:
         with open(ruta_pdf, "rb") as f:
+            print(f"Debug - File size: {os.path.getsize(ruta_pdf)} bytes")
             poller = client.begin_analyze_document(model_id=AZURE_MODEL_ID, document=f)
             result = poller.result()
         campos = {}
