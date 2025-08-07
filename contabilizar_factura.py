@@ -202,7 +202,6 @@ def construir_asiento(campos, puc_df):
     asiento = []
     subtotal = to_float(campos.get("Subtotal"))
     iva_valor = to_float(campos.get("IVA Valor"))
-    total
     total_factura = to_float(campos.get("Total Factura"))
     proveedor = campos.get("Proveedor", "")
     descripcion = campos.get("Descripcion", "")
