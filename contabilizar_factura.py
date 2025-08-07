@@ -55,9 +55,10 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
 def clasificar_con_gpt(descripcion, proveedor):
     # Load PUC to include in prompt
     df_puc = pd.read_excel("PUC-CENTRO COSTOS SYNERGY.xlsx", sheet_name="PUC")
-    df_puc.columns = df_puc.columns.str.strip()  # Strip any leading/trailing spaces from column names
-    # Apply dtype after stripping
-    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str)
+    df_puc.columns = df_puc.columns.str.strip()  # Strip column names
+    # Strip values and normalize CUENTA by removing hyphens and spaces
+    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str).str.replace('-', '').str.strip()
+    df_puc['DESCRIPCION'] = df_puc['DESCRIPCION'].astype(str).str.strip()
     # Filter to relevant accounts for efficiency (inventarios, gastos, costos)
     relevant_df = df_puc[df_puc["CUENTA"].str.startswith(('14', '51', '61', '71', '72', '73'), na=False)]
     puc_list = '\n'.join([f"{row['CUENTA']} - {row['DESCRIPCION']}" for _, row in relevant_df.iterrows() if pd.notna(row['DESCRIPCION'])])
@@ -86,7 +87,7 @@ Lista de cuentas PUC disponibles de la empresa:
 {puc_list}
 
 Devuelve **solo JSON** : {{"cuenta": "codigo_cuenta", "nombre": "nombre_cuenta"}}
-Por ejemplo: {{"cuenta": "143505", "nombre": "Inventario de materia prima"}}
+Por ejemplo: {{"cuenta": "143505", "nombre": "INVENTARIO DE MATERIA PRIMA"}}
 Your response must be a valid JSON object.
 """.strip()
 
@@ -98,7 +99,10 @@ Your response must be a valid JSON object.
     )
     resp = response.choices[0].message.content.strip()
     data = json.loads(resp)
-    return data["cuenta"], data["nombre"]
+    # Normalize returned cuenta by removing hyphens (if any)
+    cuenta = data["cuenta"].replace('-', '').strip()
+    nombre = data["nombre"].strip()
+    return cuenta, nombre
 
 def validar_balance(asiento):
     total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
@@ -108,10 +112,11 @@ def validar_balance(asiento):
 
 def validar_cuentas_puc(asiento, path_catalogo="PUC-CENTRO COSTOS SYNERGY.xlsx"):
     df_puc = pd.read_excel(path_catalogo, sheet_name="PUC")
-    df_puc.columns = df_puc.columns.str.strip()  # Strip any leading/trailing spaces from column names
-    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str)
+    df_puc.columns = df_puc.columns.str.strip()  # Strip column names
+    # Normalize CUENTA by removing hyphens and spaces
+    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str).str.replace('-', '').str.strip()
     cuentas_validas = set(df_puc["CUENTA"])
-    cuentas_asiento = set(str(l["cuenta"]) for l in asiento)
+    cuentas_asiento = set(str(l["cuenta"]).replace('-', '').strip() for l in asiento)
     cuentas_invalidas = cuentas_asiento - cuentas_validas
     return cuentas_invalidas
 
