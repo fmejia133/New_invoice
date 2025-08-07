@@ -181,7 +181,7 @@ def construir_asiento(campos, puc_df):
     proveedor = campos.get("Proveedor", "")
     regimen = campos.get("Regimen Tributario", "")
     ciudad = campos.get("Ciudad", "").lower()
-    actividad = cams.get("Actividad Economica", "")
+    actividad = campos.get("Actividad Economica", "")  # Fixed from 'cams' to 'campos'
     retefuente_valor = to_float(campos.get("Retefuente Valor"))
     descripcion = campos.get("Descripcion", "").lower()
     fomento = to_float(campos.get("Impuesto Fomento", 0))
