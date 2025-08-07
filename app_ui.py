@@ -4,13 +4,6 @@ from contabilizar_factura import extraer_campos_azure, construir_asiento, clasif
 import pandas as pd
 import json
 
-# Helper function to convert to float
-def to_float(valor):
-    try:
-        return float(str(valor).replace(",", "").strip())
-    except (ValueError, AttributeError):
-        return 0.0
-
 st.set_page_config(page_title="App Contable - Facturas", layout="wide")
 st.title("📄 Procesamiento Contable de Facturas - Synergy Pack")
 
@@ -32,8 +25,8 @@ if uploaded_file:
         descripcion = campos.get("Descripcion", "")
         subtotal = to_float(campos.get("Subtotal"))
         iva_valor = to_float(campos.get("IVA Valor"))
-        total_factura = to_float(campos.get("Total Factura"))
-        proveedor = campos.get("Proveedor", "")  # Add proveedor from campos
+        total_factura = campos.get("Total Factura", "")
+        proveedor = campos.get("Proveedor", "")
 
         # Get classification and account details from the new function
         result = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
