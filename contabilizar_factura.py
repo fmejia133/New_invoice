@@ -48,15 +48,17 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
         pass
     return 0.0
 
-def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY_clean.xlsx", sheet_name="PUC"):
+def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY_fixed.xlsx", sheet_name="PUC"):
     try:
         import os
         print(f"Debug - File exists: {os.path.isfile(ruta)}")
         xls = pd.ExcelFile(ruta)
         print(f"Debug - Available sheets: {xls.sheet_names}")
-        df_all = pd.read_excel(xls, sheet_name=sheet_name)
+        df_all = pd.read_excel(xls, sheet_name=sheet_name, header=0)
         print(f"Debug - All columns in sheet '{sheet_name}': {df_all.columns.tolist()}")
-        df = pd.read_excel(ruta, sheet_name=sheet_name, usecols=["CUENTA", "DESCRIPCION", "CLASE"], header=0)
+        # Select only the required columns, ignoring extras
+        required_cols = ["CUENTA", "DESCRIPCION", "CLASE"]
+        df = df_all[required_cols].copy()
         df = df.dropna(subset=["CLASE"])
         df = df[df["CLASE"].isin(["Act", "Pas", "Egr"])]
         print(f"Debug - Loaded PUC with {len(df)} valid accounts")
@@ -66,6 +68,16 @@ def cargar_puc(ruta="PUC-CENTRO COSTOS SYNERGY_clean.xlsx", sheet_name="PUC"):
         return pd.DataFrame(columns=["CUENTA", "DESCRIPCION", "CLASE"])
     except ValueError as e:
         print(f"Debug - ValueError in cargar_puc: {str(e)}")
+        df_all = pd.read_excel(ruta, sheet_name=sheet_name, header=0)
+        print(f"Debug - All data columns: {df_all.columns.tolist()}")
+        required_cols = ["CUENTA", "DESCRIPCION", "CLASE"]
+        df = df_all[required_cols].copy() if all(col in df_all.columns for col in required_cols) else pd.DataFrame(columns=required_cols)
+        df = df.dropna(subset=["CLASE"])
+        df = df[df["CLASE"].isin(["Act", "Pas", "Egr"])]
+        print(f"Debug - Loaded PUC with {len(df)} valid accounts after fallback")
+        return df
+    except Exception as e:
+        print(f"Debug - Unexpected error in cargar_puc: {str(e)}")
         return pd.DataFrame(columns=["CUENTA", "DESCRIPCION", "CLASE"])
 
 def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor):
@@ -73,7 +85,6 @@ def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_
     proveedor_lower = proveedor.lower() if proveedor else ""
     print(f"Debug - Input Description: {descripcion}, Lowercase: {descripcion_lower}, Proveedor: {proveedor}, Lowercase: {proveedor_lower}")
 
-    # Pre-check for transportation supplier
     if any(keyword in proveedor_lower for keyword in ["transportes", "transportadora"]):
         print(f"Debug - Pre-classified as servicio due to supplier: {proveedor_lower}")
         return {
@@ -84,7 +95,6 @@ def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_
             "credito": 0
         }
 
-    # Pre-check for arroz paddy
     if any(keyword in descripcion_lower for keyword in ["arroz paddy", "materia prima", "insumo", "bulto"]) and "transporte" not in descripcion_lower:
         print(f"Debug - Pre-classified as inventario due to keywords: {descripcion_lower}")
         return {
@@ -95,21 +105,19 @@ def clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_
             "credito": 0
         }
 
-    # Check for missing critical data
     if not descripcion or not proveedor:
         print(f"Debug - Missing critical data: Descripción={descripcion}, Proveedor={proveedor}, using fallback")
         return {
             "categoria": "gasto",
             "cuenta": "51-40-10",
-            "nombre": "COMPRAS",
+            "nombre": "GASTOS LEGALES",
             "debito": subtotal,
             "credito": 0,
             "comentario": "Datos incompletos desde OCR, revisar manualmente"
         }
 
-    # Proceed to AI for general classification
     prompt = f"""
-Eres un contador profesional en Colombia que trabajas en una empresa que es un molino de arroz y tiene una fábrica de máquinas empaquetadoras. La principal materia prima del molino es el arroz paddy, que debe ser registrada en una cuenta de inventario. Esta aplicación se enfoca en la función de cuentas por pagar (AP), clasificando facturas en categorías como inventario, servicios, gastos, materiales indirectos o pasivos, y seleccionando la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, según principios contables colombianos. Clasifica cada campo como 'Egr' (P&L), 'Act' (activo) o 'Pas' (pasivo) basándote **exclusivamente** en la descripción y el nombre del proveedor, ya que estos indican la naturaleza del bien o servicio. Los campos subtotal, IVA valor y total factura se proporcionan solo para determinar los montos de débito o crédito, no para la clasificación. Basado en la siguiente información:
+Eres un contador profesional en Colombia que trabajas en una empresa que es un molino de arroz y tiene una fábrica de máquinas empaquetadoras. La principal materia prima del molino es el arroz paddy, que debe ser registrada en una cuenta de inventario. Esta aplicación se enfoca en la función de cuentas por pagar (AP), clasificando facturas en categorías como inventario, servicios, gastos, materiales indirectos o pasivos, y seleccionando la cuenta más adecuada del Plan Único de Cuentas (PUC) proporcionado, según principios contables colombianos. Clasifica cada campo como 'Egr' (P&L), 'Act' (activo) o 'Pas' (pasivo) basándote **exclusivamente** en la descripción y el nombre del proveedor. Nota: 'estibas' (pallets) deben clasificarse como inventario (Act); la cuenta '51-40-10' (GASTOS LEGALES) es exclusivamente para legal expenses. Los campos subtotal, IVA valor y total factura se proporcionan solo para determinar los montos de débito o crédito, no para la clasificación. Basado en la siguiente información:
 
 - Descripción: \"{descripcion}\"
 - Proveedor: \"{proveedor}\"
@@ -120,9 +128,9 @@ Eres un contador profesional en Colombia que trabajas en una empresa que es un m
 Analiza el contexto de la descripción y el proveedor para determinar la categoría y cuenta más apropiada de la lista de cuentas AP proporcionada a continuación, con sus clases (Act=Activo, Pas=Pasivo, Egr=Gasto):
 {puc_df.to_string(index=False)}
 
-Si incluye retenciones (e.g., retefuente, IVA retenido) o es el total a pagar al proveedor, prioriza cuentas de pasivo (Pas). Si es un servicio o gasto, usa cuentas de gasto (Egr). Si es una compra de bienes (e.g., materia prima), usa cuentas de activo (Act) cuando corresponda. Si hay incertidumbre, selecciona la cuenta más lógica basada en la descripción y proveedor, y agrega un comentario en el JSON para revisión.
+Si incluye retenciones (e.g., retefuente, IVA retenido) o es el total a pagar al proveedor, prioriza cuentas de pasivo (Pas). Si es un servicio o gasto (excepto legal expenses), usa cuentas de gasto (Egr). Si es una compra de bienes (e.g., estibas o materia prima), usa cuentas de activo (Act). Si hay incertidumbre, selecciona la cuenta más lógica basada en la descripción y proveedor, y agrega un comentario en el JSON para revisión.
 
-Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), y opcionalmente \"comentario\" para dudas, por ejemplo: {{\"categoria\": \"servicio\", \"cuenta\": \"51-35-50\", \"nombre\": \"TRANSPORTE FLETES Y ACARREOS\", \"debito\": 1000, \"credito\": 0}} o {{\"categoria\": \"pasivo\", \"cuenta\": \"23-65-20\", \"nombre\": \"RETEFUENTE REGISTRADA\", \"debito\": 0, \"credito\": 150, \"comentario\": \"Revisar retefuente aplicada\"}}.
+Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"debito\" (monto o 0), \"credito\" (monto o 0), y opcionalmente \"comentario\" para dudas.
 """
     response = client_openai.chat.completions.create(
         model="gpt-4o",
@@ -131,6 +139,7 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
     )
     try:
         response_text = response.choices[0].message.content.strip()
+        print(f"Debug - Full AI Response: {response_text}")
         import re
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
         if json_match:
@@ -139,18 +148,21 @@ Devuelve un JSON válido con campos: \"categoria\", \"cuenta\", \"nombre\", \"de
             raise json.JSONDecodeError("No JSON block found", response_text, 0)
         print(f"Debug - AI Response: {result}")
         cuenta = result.get("cuenta")
-        nombre = puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].iloc[0] if cuenta in puc_df["CUENTA"].values and not puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].empty else result.get("nombre", "COMPRAS")
+        if not puc_df.empty and cuenta not in puc_df["CUENTA"].values:
+            print(f"Debug - Account {cuenta} not found in PUC, available accounts: {puc_df['CUENTA'].tolist()}")
+            cuenta = next((acc for acc in puc_df["CUENTA"] if puc_df[puc_df["CUENTA"] == acc]["CLASE"].iloc[0] == "Egr"), "51-40-10")
+        nombre = puc_df[puc_df["CUENTA"] == cuenta]["DESCRIPCION"].iloc[0] if cuenta in puc_df["CUENTA"].values else "GASTOS LEGALES"
         return {
             "categoria": result.get("categoria", "gasto"),
-            "cuenta": cuenta if cuenta in puc_df["CUENTA"].values else "51-40-10",
+            "cuenta": cuenta,
             "nombre": nombre,
             "debito": to_float(result.get("debito", 0)),
             "credito": to_float(result.get("credito", 0)),
-            "comentario": result.get("comentario", "")
+            "comentario": result.get("comentario", f"Account {cuenta} selected from PUC")
         }
-    except (json.JSONDecodeError, AttributeError):
-        print(f"Debug - JSON Decode Error, falling back to default. Response: {response.choices[0].message.content}")
-        return {"categoria": "gasto", "cuenta": "51-40-10", "nombre": "COMPRAS", "debito": subtotal, "credito": 0, "comentario": f"Error en parsing, revisar manualmente. Respuesta AI: {response.choices[0].message.content}"}
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"Debug - JSON Decode Error: {str(e)}, falling back to default. Response: {response.choices[0].message.content}")
+        return {"categoria": "gasto", "cuenta": "51-40-10", "nombre": "GASTOS LEGALES", "debito": subtotal, "credito": 0, "comentario": f"Error en parsing, revisar manualmente. Respuesta AI: {response.choices[0].message.content}"}
 
 def validar_balance(asiento):
     total_debitos = sum(to_float(l.get("debito", 0)) for l in asiento)
@@ -190,92 +202,58 @@ def construir_asiento(campos, puc_df):
     asiento = []
     subtotal = to_float(campos.get("Subtotal"))
     iva_valor = to_float(campos.get("IVA Valor"))
+    total
     total_factura = to_float(campos.get("Total Factura"))
-    nit = campos.get("NIT Proveedor", "")
     proveedor = campos.get("Proveedor", "")
-    regimen = campos.get("Regimen Tributario", "")
-    ciudad = campos.get("Ciudad", "").lower()
-    actividad = campos.get("Actividad Economica", "")
-    retefuente_valor = to_float(campos.get("Retefuente Valor"))
-    descripcion = campos.get("Descripcion", "").lower()
-    fomento = to_float(campos.get("Impuesto Fomento", 0))
-    original_fomento = fomento
+    descripcion = campos.get("Descripcion", "")
 
-    print(f"Debug - Campos: {campos}, Fomento: {fomento}")
+    # Clasificación principal
+    clasificacion = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
+    asiento.append(clasificacion)
 
-    # Obtener entrada P&L o inicial
-    pl_entry = clasificar_y_obtener_cuenta(descripcion, puc_df, subtotal, iva_valor, total_factura, proveedor)
-    if pl_entry["debito"] > 0 or pl_entry["credito"] > 0:
-        asiento.append(pl_entry)
-
-    if iva_valor > 0:
+    # IVA Descontable
+    if iva_valor > 0 and not es_regimen_simple(campos.get("Regimen Tributario", "")):
         asiento.append({
+            "categoria": "impuesto",
             "cuenta": "24-08-05",
-            "nombre": "IVA DESCONTABLE COMPRAS GRAVADAS",
+            "nombre": "IVA DESCONTABLE",
             "debito": iva_valor,
             "credito": 0
         })
 
-    if retefuente_valor > 0:
+    # Cuentas por pagar
+    if total_factura > 0:
         asiento.append({
-            "cuenta": "23-65-20",
-            "nombre": "RETEFUENTE REGISTRADA",
+            "categoria": "pasivo",
+            "cuenta": "22-05-05",
+            "nombre": "CUENTAS POR PAGAR",
             "debito": 0,
-            "credito": retefuente_valor
+            "credito": total_factura
         })
 
-    if iva_valor > 0 and es_regimen_simple(regimen):
-        valor_reteiva = round(iva_valor * 0.15, 2)
-        asiento.append({
-            "cuenta": "23-67-40",
-            "nombre": "RETENCION DE IVA",
-            "debito": 0,
-            "credito": valor_reteiva
-        })
+    # Validaciones
+    balance_valido, total_debitos, total_creditos, diferencia = validar_balance(asiento)
+    cuentas_invalidas = validar_cuentas_puc(asiento, puc_df)
 
-    if ("arroz" in descripcion or "arroz paddy" in descripcion):
-        if "Impuesto Fomento" not in campos or fomento == 0:
-            fomento = round(subtotal * 0.005, 2)
-            campos["Impuesto Fomento"] = str(fomento)
-        if fomento > 0:
-            asiento.append({
-                "cuenta": "23-65-05",
-                "nombre": "IMPUESTO FOMENTO RETENCION",
-                "debito": 0,
-                "credito": fomento
-            })
+    if not balance_valido:
+        print(f"Debug - Balance no valido: Debitos={total_debitos}, Creditos={total_creditos}, Diferencia={diferencia}")
+    if cuentas_invalidas:
+        print(f"Debug - Cuentas invalidas en PUC: {cuentas_invalidas}")
 
-    payable_amount = total_factura - (fomento - original_fomento) if ("arroz" in descripcion or "arroz paddy" in descripcion) and ("Impuesto Fomento" not in campos or original_fomento == 0) else total_factura
-    print(f"Debug - Total Factura: {total_factura}, Fomento: {fomento}, Original Fomento: {original_fomento}, Payable Amount: {payable_amount}")
-    asiento.append({
-        "cuenta": "22-05-05",
-        "nombre": f"CUENTAS POR PAGAR - {proveedor} - NIT {nit}",
-        "debito": 0,
-        "credito": round(payable_amount, 2)
-    })
+    return asiento, balance_valido, cuentas_invalidas
 
-    return asiento
-
-# MAIN
-def main():
-    archivo_pdf = "factura_page_8.pdf"  # Test with this specific invoice
-    campos = extraer_campos_azure(archivo_pdf)
-    descripcion = campos.get("Descripcion", "")
-    asiento = construir_asiento(campos, puc_df)
-    valido, debitos, creditos, diferencia = validar_balance(asiento)
-    if not valido:
-        print(f"❌ Asiento no cuadra. Débitos: {debitos}, Créditos: {creditos}, Diferencia: {diferencia}")
-        return
-    if cuentas := validar_cuentas_puc(asiento, puc_df):
-        print("❌ Cuentas inválidas:", cuentas)
-        return
-    nombre_base = os.path.splitext(os.path.basename(archivo_pdf))[0]
-    df = pd.DataFrame(asiento)
-    df.to_csv(f"asiento_{nombre_base}.csv", index=False)
-    with open(f"asiento_{nombre_base}.json", "w", encoding="utf-8") as f:
-        json.dump(asiento, f, indent=2, ensure_ascii=False)
-    print(f"✅ Exportado: asiento_{nombre_base}.csv y .json")
-    print(df)
-
+# FUNCIÓN PRINCIPAL (para pruebas locales)
 if __name__ == "__main__":
-    main()
+    # Ejemplo de uso local
+    campos_ejemplo = {
+        "Proveedor": "ESTIBAS RETORNABLES DE COLOMBIA LTDA",
+        "Descripcion": "(001001) 00PRN39828 OC 4502812740\n(001001) 00PRN39829 OC 4502812737",
+        "Subtotal": "6523800.0",
+        "IVA Valor": "1239522.0",
+        "Total Factura": "7763322.0",
+        "Regimen Tributario": "Responsables de IVA"
+    }
+    asiento, balance_valido, cuentas_invalidas = construir_asiento(campos_ejemplo, puc_df)
+    print(f"Asiento: {asiento}")
+    print(f"Balance valido: {balance_valido}")
+    print(f"Cuentas invalidas: {cuentas_invalidas}")
