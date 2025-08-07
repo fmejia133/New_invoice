@@ -54,7 +54,10 @@ def obtener_tarifa_ica(codigo_ciiu, path="tarifas_ica_ibague.csv"):
 
 def clasificar_con_gpt(descripcion, proveedor):
     # Load PUC to include in prompt
-    df_puc = pd.read_excel("PUC-CENTRO COSTOS SYNERGY.xlsx", sheet_name="PUC", dtype={"CUENTA": str})
+    df_puc = pd.read_excel("PUC-CENTRO COSTOS SYNERGY.xlsx", sheet_name="PUC")
+    df_puc.columns = df_puc.columns.str.strip()  # Strip any leading/trailing spaces from column names
+    # Apply dtype after stripping
+    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str)
     # Filter to relevant accounts for efficiency (inventarios, gastos, costos)
     relevant_df = df_puc[df_puc["CUENTA"].str.startswith(('14', '51', '61', '71', '72', '73'), na=False)]
     puc_list = '\n'.join([f"{row['CUENTA']} - {row['DESCRIPCION']}" for _, row in relevant_df.iterrows() if pd.notna(row['DESCRIPCION'])])
@@ -102,7 +105,9 @@ def validar_balance(asiento):
     return diferencia == 0, total_debitos, total_creditos, diferencia
 
 def validar_cuentas_puc(asiento, path_catalogo="PUC-CENTRO COSTOS SYNERGY.xlsx"):
-    df_puc = pd.read_excel(path_catalogo, sheet_name="PUC", dtype={"CUENTA": str})
+    df_puc = pd.read_excel(path_catalogo, sheet_name="PUC")
+    df_puc.columns = df_puc.columns.str.strip()  # Strip any leading/trailing spaces from column names
+    df_puc['CUENTA'] = df_puc['CUENTA'].astype(str)
     cuentas_validas = set(df_puc["CUENTA"])
     cuentas_asiento = set(str(l["cuenta"]) for l in asiento)
     cuentas_invalidas = cuentas_asiento - cuentas_validas
