@@ -1,7 +1,7 @@
 # app_ui.py
 import streamlit as st
 import os
-from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_con_gpt, validar_balance, validar_cuentas_puc
+from contabilizar_factura import extraer_campos_azure, construir_asiento, clasificar_con_gpt, validar_balance, validar_cuentas_puc  # Corrected import
 import pandas as pd
 import json
 
@@ -22,9 +22,10 @@ if uploaded_file:
 
         descripcion = campos.get("Descripcion", "")
         proveedor = campos.get("Proveedor", "")
-        cuenta, nombre = clasificar_con_gpt(descripcion, proveedor)
+        origen_destino = campos.get("Origen-Destino", "")
+        cuenta, nombre, retention_category = clasificar_con_gpt(descripcion, proveedor, origen_destino)
 
-        asiento = construir_asiento(campos, cuenta, nombre)
+        asiento = construir_asiento(campos, cuenta, nombre, retention_category)
         valido, debitos, creditos, diferencia = validar_balance(asiento)
 
         st.subheader("🧾 Asiento contable generado por IA")
